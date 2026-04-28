@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CastEdu - פאנל ניהול מאובטח</title>
+    <!-- גופן Heebo -->
+    <link href="https://googleapis.com" rel="stylesheet">
+    <!-- Firebase SDK (גרסה תואמת) -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+    
+    <style>
+        :root { --primary: #007bff; --bg: #f0f2f5; --text: #333; }
+        body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .box { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        h2 { text-align: center; color: var(--text); font-weight: 900; margin-bottom: 20px; }
+        .logo-text { color: var(--primary); }
+        
+        input, select, button { width: 100%; padding: 14px; margin: 10px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 1rem; box-sizing: border-box; font-family: 'Heebo', sans-serif; }
+        input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 5px rgba(0,123,255,0.2); }
+        
+        button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #0056b3; }
+        .btn-logout { background: #6c757d; margin-top: 20px; font-size: 0.9rem; }
+        
+        .hidden { display: none; }
+        
+        hr { border: 0; border-top: 1px solid #eee; margin: 25px 0; }
+        
+        .item { background: #f8f9fa; padding: 15px; margin: 10px 0; border-right: 5px solid var(--primary); border-radius: 5px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .item span { font-weight: 700; }
+        .del-btn { background: #ff4d4d; width: auto; padding: 6px 12px; font-size: 0.8rem; margin: 0; }
+        .del-btn:hover { background: #cc0000; }
+        
+        .error-msg { color: #dc3545; text-align: center; font-size: 0.9rem; margin-top: -5px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- שלב 1: מסך התחברות -->
+    <div id="login-section" class="box">
+        <h2>כניסה ל-Cast<span class="logo-text">Edu</span></h2>
+        <input type="email" id="email" placeholder="אימייל (כפי שהגדרת ב-Firebase)">
+        <input type="password" id="password" placeholder="סיסמה">
+        <div id="login-error" class="error-msg hidden">פרטי התחברות שגויים</div>
+        <button onclick="login()">התחבר למערכת</button>
+    </div>
+
+    <!-- שלב 2: פאנל הניהול -->
+    <div id="admin-section" class="box hidden">
+        <h2>ניהול שידורי Cast<span class="logo-text">Edu</span></h2>
+        
+        <label>שכבה:</label>
+        <select id="layer">
+            <option>ז</option><option>ח</option><option>ט</option>
+            <option>י</option><option>יא</option><option>יב</option>
+        </select>
+        
+        <input type="text" id="classNum" placeholder="מספר כיתה (למשל: 1)">
+        <input type="number" id="lesson" placeholder="שיעור מספר">
+        <input type="text" id="note" placeholder="מהות השינוי (למשל: משוחררים הביתה)">
+        
+        <button onclick="addChange()">פרסם למסכים בזמן אמת</button>
+        
+        <hr>
+        <h3>שינויים פעילים כרגע:</h3>
+        <div id="list-container">טוען נתונים...</div>
+        
+        <button class="btn-logout" onclick="logout()">התנתק מהמערכת</button>
+    </div>
+
+    <script>
+        // --- הגדרות ה-Firebase שלך (העתק מה-Console) ---
+        apiKey: "AIzaSyAMuuU1V_kRMZY6dzSJpzItl8AnzueUDDI",
+        authDomain: "castedu-61e72.firebaseapp.com",
+       databaseURL: "https://castedu-61e72-default-rtdb.europe-west1.firebasedatabase.app",
+       projectId: "castedu-61e72",
+       storageBucket: "castedu-61e72.firebasestorage.app",
+       messagingSenderId: "191981178633",
+       appId: "1:191981178633:web:0bc45729f1046ab41e8dd8"
+        };
+
+        // אתחול Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+
+        // --- ניהול התחברות ---
+        function login() {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+
+            auth.signInWithEmailAndPassword(email, pass)
+                .then(() => {
+                    errorDiv.classList.add('hidden');
+                })
+                .catch((error) => {
+                    errorDiv.classList.remove('hidden');
+                    console.error(error.message);
+                });
+        }
+
+        function logout() {
+            auth.signOut();
+        }
+
+        // מאזין למצב משתמש (האם מחובר או לא)
+        auth.onAuthStateChanged(user => {
+            const loginSec = document.getElementById('login-section');
+            const adminSec = document.getElementById('admin-section');
+            
+            if (user) {
+                loginSec.classList.add('hidden');
+                adminSec.classList.remove('hidden');
+                loadChanges(); // טען נתונים רק אם מחובר
+            } else {
+                loginSec.classList.remove('hidden');
+                adminSec.classList.add('hidden');
+            }
+        });
+
+        // --- ניהול נתונים ---
+        function addChange() {
+            const layer = document.getElementById('layer').value;
+            const classNum = document.getElementById('classNum').value;
+            const lesson = document.getElementById('lesson').value;
+            const note = document.getElementById('note').value;
+
+            if (!classNum || !lesson || !note) {
+                alert("נא למלא את כל השדות");
+                return;
+            }
+
+            const newChange = {
+                layer: layer,
+                classNum: classNum,
+                lesson: lesson,
+                note: note,
+                timestamp: Date.now()
+            };
+
+            db.ref('data').push(newChange);
+            
+            // ניקוי שדות
+            document.getElementById('classNum').value = '';
+            document.getElementById('lesson').value = '';
+            document.getElementById('note').value = '';
+        }
+
+        function loadChanges() {
+            db.ref('data').on('value', snapshot => {
+                const container = document.getElementById('list-container');
+                container.innerHTML = '';
+                
+                const data = snapshot.val();
+                if (!data) {
+                    container.innerHTML = '<p style="text-align:center; color:#888;">אין שינויים רשומים</p>';
+                    return;
+                }
+
+                Object.keys(data).forEach(key => {
+                    const item = data[key];
+                    container.innerHTML += `
+                        <div class="item">
+                            <span>${item.layer}${item.classNum} | ש' ${item.lesson}: ${item.note}</span>
+                            <button class="del-btn" onclick="deleteChange('${key}')">מחק</button>
+                        </div>
+                    `;
+                });
+            });
+        }
+
+        function deleteChange(key) {
+            if (confirm("האם למחוק את השינוי?")) {
+                db.ref('data').child(key).remove();
+            }
+        }
+    </script>
+</body>
+</html>
